@@ -6,7 +6,7 @@ namespace CameraSystems
     public class CameraBounds : MonoBehaviour
     {
 #if UNITY_EDITOR
-        private void OnDrawGizmosSelected()
+        private void OnDrawGizmos()
         {
             Gizmos.color = Color.cyan;
             Gizmos.DrawWireCube(transform.position, GetComponent<BoxCollider>().size);

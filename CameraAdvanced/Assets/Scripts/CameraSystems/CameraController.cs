@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Unity.Cinemachine;
 using UnityEngine;
@@ -118,27 +119,21 @@ namespace CameraSystems
                 _panDelta = Vector2.zero;
             }
 
-            if (_useBounds)
-            {
-                if (_currentBounds.Contains(desiredPosition))
-                {
-                    transform.position = desiredPosition;
-                }
-                else
-                {
-                    // Clamp position to bounds
-                    var clampedPosition = new Vector3(
-                        Mathf.Clamp(desiredPosition.x, _currentBounds.min.x, _currentBounds.max.x),
-                        desiredPosition.y,
-                        Mathf.Clamp(desiredPosition.z, _currentBounds.min.z, _currentBounds.max.z)
-                    );
-                    transform.position = clampedPosition;
-                }
-            }
-            else
+            var currentBounds = transform.CameraRectFor(targetCamera); // Rect in X-Z plane
+            if (currentBounds.Contains(new Vector2(desiredPosition.x, desiredPosition.z)))
             {
                 transform.position = desiredPosition;
             }
+            else
+            {
+                var clampedXZ = new Vector2(
+                    Mathf.Clamp(desiredPosition.x, currentBounds.xMin, currentBounds.xMax),
+                    Mathf.Clamp(desiredPosition.z, currentBounds.yMin, currentBounds.yMax)
+                );
+    
+                transform.position = new Vector3(clampedXZ.x, desiredPosition.y, clampedXZ.y);
+            }
+
         }
 
         private void HandlePanning()
@@ -229,5 +224,40 @@ namespace CameraSystems
         public void SetCameraInvertX(bool invertX) => _invertX = invertX;
         public void SetCameraInvertY(bool invertY) => _invertY = invertY;
         public void SetFOV(float fov) => targetCamera.Lens.FieldOfView = fov;
+
+#if UNITY_EDITOR
+
+        private void OnDrawGizmos()
+        {
+            var a = transform.CameraRectFor(targetCamera);
+            var mainCamera = CinemachineCore.FindPotentialTargetBrain(targetCamera).OutputCamera;
+
+            DrawRect(a, transform, mainCamera.transform);
+        }
+
+        private void DrawRect(Rect rect, Transform tar, Transform space)
+        {
+            if (tar == null) return;
+
+            var p0 = (new Vector2(rect.x, rect.y));
+            var p1 = (new Vector2(rect.x, rect.yMax));
+            var p2 = (new Vector2(rect.xMax, rect.yMax));
+            var p3 = (new Vector2(rect.xMax, rect.y));
+
+            var matrix = UnityEditor.Handles.matrix;
+            if (space)
+            {
+                var depth = Mathf.Abs(Vector3.Dot(tar.position - space.transform.position, space.transform.forward));
+                UnityEditor.Handles.matrix =
+                    Matrix4x4.TRS(space.position + space.forward * depth, space.rotation, Vector3.one);
+            }
+
+            UnityEditor.Handles.DrawLine(p0, p1);
+            UnityEditor.Handles.DrawLine(p1, p2);
+            UnityEditor.Handles.DrawLine(p2, p3);
+            UnityEditor.Handles.DrawLine(p3, p0);
+            UnityEditor.Handles.matrix = matrix;
+        }
+#endif
     }
 }
