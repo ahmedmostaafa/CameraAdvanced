@@ -495,7 +495,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4d75924d76b05344aa410607bc57db98, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  BoundingVolume: {fileID: 0}
+  BoundingVolume: {fileID: 932803494}
   SlowingDistance: 0
 --- !u!114 &235973532
 MonoBehaviour:
