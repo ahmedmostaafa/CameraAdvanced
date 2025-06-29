@@ -9,7 +9,11 @@ namespace CameraSystems
         private void OnDrawGizmos()
         {
             Gizmos.color = Color.cyan;
-            Gizmos.DrawWireCube(transform.position, GetComponent<BoxCollider>().size);
+            var size = GetComponent<BoxCollider>().size;
+            var center = transform.position;
+            Gizmos.DrawWireCube(center, size);
+            Gizmos.color = Color.green;
+            Gizmos.DrawWireCube(center, size+Vector3.one*25f);
         }
 #endif
     }

@@ -16,8 +16,8 @@ namespace CameraSystems
         private const float BASE_CAMERA_ANGLE_Y = -90f;
 
         [SerializeField] private CinemachineCamera targetCamera;
+        [SerializeField] private Collider confiner3D;
         private CinemachinePositionComposer _positionComposer;
-        private CinemachineConfiner3D _confiner3D;
 
         [Header("Input")] [SerializeField] private InputActionReference moveAction;
         [SerializeField] private InputActionReference zoomAction;
@@ -40,10 +40,10 @@ namespace CameraSystems
 
         [Header("Zoom")] [SerializeField] private float zoomSpeed = 10f;
         [SerializeField] private float zoomStep = 0.25f;
-        [SerializeField] private float minZoom = 0.5f;
-        [SerializeField] private float maxZoom = 40f;
+        [SerializeField] private float minZoom = 15f;
+        [SerializeField] private float maxZoom = 100f;
         private Vector2 _zoomInput;
-        private float _targetCameraDistance = DEFAULT_ZOOM;
+        private float _targetCameraZoom = DEFAULT_ZOOM;
 
         [Header("Orbit")] [SerializeField] private float orbitSmoothFactor = 0.1f;
         [SerializeField] private float orbitSpeed = 0.01f;
@@ -66,8 +66,7 @@ namespace CameraSystems
         private void Awake()
         {
             _positionComposer = targetCamera.GetComponent<CinemachinePositionComposer>();
-            _confiner3D = targetCamera.GetComponent<CinemachineConfiner3D>();
-            _currentBounds = _confiner3D.BoundingVolume.bounds;
+            _currentBounds = confiner3D.bounds;
             if (_currentBounds.size == Vector3.zero)
             {
                 Debug.LogWarning("Camera bounds are not set. Camera movement will not be confined.");
@@ -118,22 +117,21 @@ namespace CameraSystems
                 transform.position += panOffset * Time.deltaTime;
                 _panDelta = Vector2.zero;
             }
-
-            var currentBounds = transform.CameraRectFor(targetCamera); // Rect in X-Z plane
-            if (currentBounds.Contains(new Vector2(desiredPosition.x, desiredPosition.z)))
+            var inBounds = _currentBounds.Contains(desiredPosition);
+            if (inBounds)
             {
                 transform.position = desiredPosition;
             }
             else
             {
-                var clampedXZ = new Vector2(
-                    Mathf.Clamp(desiredPosition.x, currentBounds.xMin, currentBounds.xMax),
-                    Mathf.Clamp(desiredPosition.z, currentBounds.yMin, currentBounds.yMax)
+                // Clamp position to bounds
+                var clampedPosition = new Vector3(
+                    Mathf.Clamp(desiredPosition.x, _currentBounds.min.x, _currentBounds.max.x),
+                    desiredPosition.y,
+                    Mathf.Clamp(desiredPosition.z, _currentBounds.min.z, _currentBounds.max.z)
                 );
-    
-                transform.position = new Vector3(clampedXZ.x, desiredPosition.y, clampedXZ.y);
+                transform.position = clampedPosition;
             }
-
         }
 
         private void HandlePanning()
@@ -165,12 +163,12 @@ namespace CameraSystems
 
             if (CameraZoomBlocked) return;
 
-            _targetCameraDistance -= _zoomInput.y * zoomStep;
-            _targetCameraDistance = Mathf.Clamp(_targetCameraDistance, minZoom, maxZoom);
+            _targetCameraZoom -= _zoomInput.y * zoomStep;
+            _targetCameraZoom = Mathf.Clamp(_targetCameraZoom, minZoom, maxZoom);
 
-            _positionComposer.CameraDistance = Mathf.Lerp(
-                _positionComposer.CameraDistance,
-                _targetCameraDistance,
+            targetCamera.Lens.FieldOfView = Mathf.Lerp(
+                targetCamera.Lens.FieldOfView,
+                _targetCameraZoom,
                 Time.deltaTime * zoomSpeed
             );
         }
@@ -212,7 +210,7 @@ namespace CameraSystems
 
             _targetOrbitRotationX = BASE_CAMERA_ANGLE_X;
             _targetOrbitRotationY = cameraDefaultPosition.eulerAngles.y;
-            _targetCameraDistance = DEFAULT_ZOOM;
+            _targetCameraZoom = DEFAULT_ZOOM;
         }
 
         public void SetCameraRotationSpeed(float newRotationSpeedMultiplier) =>
@@ -231,7 +229,6 @@ namespace CameraSystems
         {
             var a = transform.CameraRectFor(targetCamera);
             var mainCamera = CinemachineCore.FindPotentialTargetBrain(targetCamera).OutputCamera;
-
             DrawRect(a, transform, mainCamera.transform);
         }
 
