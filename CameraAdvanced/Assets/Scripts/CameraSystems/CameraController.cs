@@ -79,13 +79,19 @@ namespace CameraSystems
             }
         }
 
+        private void Start()
+        {
+            var mainCamera = CinemachineCore.FindPotentialTargetBrain(targetCamera).OutputCamera;
+            var pos = mainCamera.transform.position +
+                      mainCamera.transform.forward * _targetCameraDistance;
+            transform.position = new Vector3(pos.x, transform.position.y, pos.z);
+        }
+
         private void Update()
         {
             HandleInput();
             HandlePanning();
-
             HandleMovement();
-
             HandleCameraZoom();
             HandleCameraCentring();
             HandleCameraOrbit();
@@ -138,7 +144,7 @@ namespace CameraSystems
                 _panDelta = Vector2.zero;
             }
 
-            transform.position = desiredPosition;
+            transform.position = new Vector3(desiredPosition.x, transform.position.y, desiredPosition.z);
         }
 
         bool IsExactlyTouching(Bounds bounds, Vector3 position)
