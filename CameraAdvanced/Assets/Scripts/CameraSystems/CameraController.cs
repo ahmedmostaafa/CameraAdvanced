@@ -16,8 +16,8 @@ namespace CameraSystems
         private const float BASE_CAMERA_ANGLE_Y = -90f;
 
         [SerializeField] private CinemachineCamera targetCamera;
-        [SerializeField] private Collider confiner3D;
         private CinemachinePositionComposer _positionComposer;
+        private CinemachineConfiner3D confiner3D;
 
         [Header("Input")] [SerializeField] private InputActionReference moveAction;
         [SerializeField] private InputActionReference zoomAction;
@@ -40,10 +40,10 @@ namespace CameraSystems
 
         [Header("Zoom")] [SerializeField] private float zoomSpeed = 10f;
         [SerializeField] private float zoomStep = 0.25f;
-        [SerializeField] private float minZoom = 15f;
-        [SerializeField] private float maxZoom = 100f;
+        [SerializeField] private float minZoom = 10f;
+        [SerializeField] private float maxZoom = 40f;
         private Vector2 _zoomInput;
-        private float _targetCameraZoom = DEFAULT_ZOOM;
+        private float _targetCameraDistance = DEFAULT_ZOOM;
 
         [Header("Orbit")] [SerializeField] private float orbitSmoothFactor = 0.1f;
         [SerializeField] private float orbitSpeed = 0.01f;
@@ -66,7 +66,8 @@ namespace CameraSystems
         private void Awake()
         {
             _positionComposer = targetCamera.GetComponent<CinemachinePositionComposer>();
-            _currentBounds = confiner3D.bounds;
+            confiner3D = targetCamera.GetComponent<CinemachineConfiner3D>();
+            _currentBounds = confiner3D.BoundingVolume.bounds;
             if (_currentBounds.size == Vector3.zero)
             {
                 Debug.LogWarning("Camera bounds are not set. Camera movement will not be confined.");
@@ -107,7 +108,26 @@ namespace CameraSystems
                 if (action.action.IsPressed()) return;
             }
 
-            Vector3 moveDirection = transform.forward * _moveInput.y + transform.right * _moveInput.x;
+            var moveDirection = transform.forward * _moveInput.y + transform.right * _moveInput.x;
+
+            if (moveDirection != Vector3.zero)
+            {
+                var mainCamera = CinemachineCore.FindPotentialTargetBrain(targetCamera).OutputCamera;
+                var camPos = mainCamera.transform.position;
+                if (IsExactlyTouching(_currentBounds, camPos))
+                {
+                    var directionToCam = (camPos - targetCamera.transform.position).normalized;
+
+                    Debug.DrawRay(mainCamera.transform.position, directionToCam * 10, Color.red);
+
+                    var dot = Vector3.Dot(moveDirection, directionToCam);
+                    if (dot < 0f)
+                    {
+                        moveDirection -= directionToCam * dot;
+                    }
+                }
+            }
+
             var desiredPosition = transform.position +
                                   moveDirection * (movementSpeed * Time.deltaTime * _movementSpeedMultiplier);
 
@@ -117,22 +137,22 @@ namespace CameraSystems
                 transform.position += panOffset * Time.deltaTime;
                 _panDelta = Vector2.zero;
             }
-            var inBounds = _currentBounds.Contains(desiredPosition);
-            if (inBounds)
-            {
-                transform.position = desiredPosition;
-            }
-            else
-            {
-                // Clamp position to bounds
-                var clampedPosition = new Vector3(
-                    Mathf.Clamp(desiredPosition.x, _currentBounds.min.x, _currentBounds.max.x),
-                    desiredPosition.y,
-                    Mathf.Clamp(desiredPosition.z, _currentBounds.min.z, _currentBounds.max.z)
-                );
-                transform.position = clampedPosition;
-            }
+
+            transform.position = desiredPosition;
         }
+
+        bool IsExactlyTouching(Bounds bounds, Vector3 position)
+        {
+            if (!bounds.Contains(position)) return false;
+
+            Vector3 min = bounds.min;
+            Vector3 max = bounds.max;
+
+            return Mathf.Approximately(position.x, min.x) || Mathf.Approximately(position.x, max.x) ||
+                   Mathf.Approximately(position.y, min.y) || Mathf.Approximately(position.y, max.y) ||
+                   Mathf.Approximately(position.z, min.z) || Mathf.Approximately(position.z, max.z);
+        }
+
 
         private void HandlePanning()
         {
@@ -163,19 +183,27 @@ namespace CameraSystems
 
             if (CameraZoomBlocked) return;
 
-            _targetCameraZoom -= _zoomInput.y * zoomStep;
-            _targetCameraZoom = Mathf.Clamp(_targetCameraZoom, minZoom, maxZoom);
+            _targetCameraDistance -= _zoomInput.y * zoomStep;
+            _targetCameraDistance = Mathf.Clamp(_targetCameraDistance, minZoom, maxZoom);
 
-            targetCamera.Lens.FieldOfView = Mathf.Lerp(
-                targetCamera.Lens.FieldOfView,
-                _targetCameraZoom,
-                Time.deltaTime * zoomSpeed
+            _positionComposer.CameraDistance = Mathf.Lerp(
+                _positionComposer.CameraDistance,
+                _targetCameraDistance, Time.deltaTime * zoomSpeed
             );
+
+            if (_zoomInput.y != 0)
+            {
+                var mainCamera = CinemachineCore.FindPotentialTargetBrain(targetCamera).OutputCamera;
+                var pos = mainCamera.transform.position +
+                          mainCamera.transform.forward * _targetCameraDistance;
+                transform.position = new Vector3(pos.x, transform.position.y, pos.z);
+            }
         }
 
         private void HandleCameraOrbit()
         {
-            if (orbitAction.action.IsPressed())
+            var oAction = orbitAction.action.IsPressed();
+            if (oAction)
             {
                 Vector2 orbitDirection = _lookInput * (orbitSpeed * _rotationSpeedMultiplier);
 
@@ -192,6 +220,18 @@ namespace CameraSystems
                 targetRotation,
                 Time.deltaTime * orbitSmoothFactor
             );
+
+            // Handle the position transform to ensure it follows the orbit so when move it moves instantily when the movement is applied
+
+            if (oAction)
+            {
+                var mainCamera = CinemachineCore.FindPotentialTargetBrain(targetCamera).OutputCamera;
+
+                var pos = mainCamera.transform.position +
+                          mainCamera.transform.forward * _targetCameraDistance;
+                transform.position = new Vector3(pos.x, transform.position.y, pos.z);
+            }
+
 
             transform.rotation = Quaternion.Euler(0, _targetOrbitRotationY, 0);
         }
@@ -210,7 +250,7 @@ namespace CameraSystems
 
             _targetOrbitRotationX = BASE_CAMERA_ANGLE_X;
             _targetOrbitRotationY = cameraDefaultPosition.eulerAngles.y;
-            _targetCameraZoom = DEFAULT_ZOOM;
+            _targetCameraDistance = DEFAULT_ZOOM;
         }
 
         public void SetCameraRotationSpeed(float newRotationSpeedMultiplier) =>
@@ -222,39 +262,5 @@ namespace CameraSystems
         public void SetCameraInvertX(bool invertX) => _invertX = invertX;
         public void SetCameraInvertY(bool invertY) => _invertY = invertY;
         public void SetFOV(float fov) => targetCamera.Lens.FieldOfView = fov;
-
-#if UNITY_EDITOR
-
-        private void OnDrawGizmos()
-        {
-            var a = transform.CameraRectFor(targetCamera);
-            var mainCamera = CinemachineCore.FindPotentialTargetBrain(targetCamera).OutputCamera;
-            DrawRect(a, transform, mainCamera.transform);
-        }
-
-        private void DrawRect(Rect rect, Transform tar, Transform space)
-        {
-            if (tar == null) return;
-
-            var p0 = (new Vector2(rect.x, rect.y));
-            var p1 = (new Vector2(rect.x, rect.yMax));
-            var p2 = (new Vector2(rect.xMax, rect.yMax));
-            var p3 = (new Vector2(rect.xMax, rect.y));
-
-            var matrix = UnityEditor.Handles.matrix;
-            if (space)
-            {
-                var depth = Mathf.Abs(Vector3.Dot(tar.position - space.transform.position, space.transform.forward));
-                UnityEditor.Handles.matrix =
-                    Matrix4x4.TRS(space.position + space.forward * depth, space.rotation, Vector3.one);
-            }
-
-            UnityEditor.Handles.DrawLine(p0, p1);
-            UnityEditor.Handles.DrawLine(p1, p2);
-            UnityEditor.Handles.DrawLine(p2, p3);
-            UnityEditor.Handles.DrawLine(p3, p0);
-            UnityEditor.Handles.matrix = matrix;
-        }
-#endif
     }
 }

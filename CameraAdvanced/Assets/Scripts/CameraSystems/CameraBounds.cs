@@ -12,8 +12,8 @@ namespace CameraSystems
             var size = GetComponent<BoxCollider>().size;
             var center = transform.position;
             Gizmos.DrawWireCube(center, size);
-            Gizmos.color = Color.green;
-            Gizmos.DrawWireCube(center, size+Vector3.one*25f);
+            // Gizmos.color = Color.green;
+            // Gizmos.DrawWireCube(center, size+Vector3.one*25f);
         }
 #endif
     }
