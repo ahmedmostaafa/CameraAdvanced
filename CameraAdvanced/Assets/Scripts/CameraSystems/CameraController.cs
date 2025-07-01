@@ -91,10 +91,10 @@ namespace CameraSystems
         {
             HandleInput();
             HandlePanning();
-            HandleMovement();
             HandleCameraZoom();
-            HandleCameraCentring();
             HandleCameraOrbit();
+            HandleMovement();
+            HandleCameraCentring();
         }
 
         private void HandleInput()
@@ -114,7 +114,9 @@ namespace CameraSystems
                 if (action.action.IsPressed()) return;
             }
 
-            var moveDirection = transform.forward * _moveInput.y + transform.right * _moveInput.x;
+            var moveDirection = transform.forward * _moveInput.y + transform.right * _moveInput.x +
+                                transform.right * _panDelta.x + transform.forward * _panDelta.y;
+            _panDelta = Vector2.zero;
 
             if (moveDirection != Vector3.zero)
             {
@@ -137,13 +139,6 @@ namespace CameraSystems
             var desiredPosition = transform.position +
                                   moveDirection * (movementSpeed * Time.deltaTime * _movementSpeedMultiplier);
 
-            if (_panDelta != Vector2.zero)
-            {
-                Vector3 panOffset = transform.right * _panDelta.x + transform.forward * _panDelta.y;
-                transform.position += panOffset * Time.deltaTime;
-                _panDelta = Vector2.zero;
-            }
-
             transform.position = new Vector3(desiredPosition.x, transform.position.y, desiredPosition.z);
         }
 
@@ -159,6 +154,10 @@ namespace CameraSystems
                    Mathf.Approximately(position.z, min.z) || Mathf.Approximately(position.z, max.z);
         }
 
+        bool IsGoingOutOfBounds(Bounds bounds, Vector3 position)
+        {
+            return !bounds.Contains(position);
+        }
 
         private void HandlePanning()
         {
@@ -187,7 +186,11 @@ namespace CameraSystems
                 if (action.action.IsPressed()) return;
             }
 
-            if (CameraZoomBlocked) return;
+            var mainCamera = CinemachineCore.FindPotentialTargetBrain(targetCamera).OutputCamera;
+            var camPos = mainCamera.transform.position;
+            var isZoomingAgenestBounds = _zoomInput.y < 0 &&
+                                         IsExactlyTouching(_currentBounds, camPos);
+            if (CameraZoomBlocked || isZoomingAgenestBounds) return;
 
             _targetCameraDistance -= _zoomInput.y * zoomStep;
             _targetCameraDistance = Mathf.Clamp(_targetCameraDistance, minZoom, maxZoom);
@@ -196,14 +199,6 @@ namespace CameraSystems
                 _positionComposer.CameraDistance,
                 _targetCameraDistance, Time.deltaTime * zoomSpeed
             );
-
-            if (_zoomInput.y != 0)
-            {
-                var mainCamera = CinemachineCore.FindPotentialTargetBrain(targetCamera).OutputCamera;
-                var pos = mainCamera.transform.position +
-                          mainCamera.transform.forward * _targetCameraDistance;
-                transform.position = new Vector3(pos.x, transform.position.y, pos.z);
-            }
         }
 
         private void HandleCameraOrbit()
@@ -228,12 +223,11 @@ namespace CameraSystems
             );
 
             // Handle the position transform to ensure it follows the orbit so when move it moves instantily when the movement is applied
-
-            if (oAction)
+            var mainCamera = CinemachineCore.FindPotentialTargetBrain(targetCamera).OutputCamera;
+            var camPos = mainCamera.transform.position;
+            if (oAction && IsExactlyTouching(_currentBounds, camPos))
             {
-                var mainCamera = CinemachineCore.FindPotentialTargetBrain(targetCamera).OutputCamera;
-
-                var pos = mainCamera.transform.position +
+                var pos = camPos +
                           mainCamera.transform.forward * _targetCameraDistance;
                 transform.position = new Vector3(pos.x, transform.position.y, pos.z);
             }
