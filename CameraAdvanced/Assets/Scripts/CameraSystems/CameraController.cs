@@ -188,8 +188,11 @@ namespace CameraSystems
 
             var mainCamera = CinemachineCore.FindPotentialTargetBrain(targetCamera).OutputCamera;
             var camPos = mainCamera.transform.position;
-            var isZoomingAgenestBounds = _zoomInput.y < 0 &&
-                                         IsExactlyTouching(_currentBounds, camPos);
+            var directionToCam = (camPos - transform.position).normalized;
+            var newPos = camPos + directionToCam * Mathf.Sign(-_zoomInput.y);
+            Debug.DrawRay(mainCamera.transform.position, directionToCam, Color.red);
+            var isZoomingAgenestBounds = _zoomInput.y != 0 &&
+                                         IsGoingOutOfBounds(_currentBounds, newPos);
             if (CameraZoomBlocked || isZoomingAgenestBounds) return;
 
             _targetCameraDistance -= _zoomInput.y * zoomStep;
